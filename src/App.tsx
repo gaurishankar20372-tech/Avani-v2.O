@@ -869,14 +869,19 @@ export default function App() {
         }`}
       >
         {/* Left Side: Brand Indicator - "Avani 2.O" */}
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
-          <span className="text-xs sm:text-sm font-black tracking-wider bg-gradient-to-r from-white via-pink-200 to-pink-400 bg-clip-text text-transparent font-sans">
-            Avani 2.O
-          </span>
-          <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
-            • Live Assistant
-          </span>
+        <div className="flex items-center gap-2.5">
+          <div className="relative flex items-center justify-center">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-md shadow-emerald-400/50" />
+            <span className="absolute w-4 h-4 rounded-full bg-emerald-400/40 animate-ping" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-base sm:text-lg font-black tracking-wide text-white drop-shadow-[0_2px_8px_rgba(236,72,153,0.35)] font-sans">
+              Avani <span className="text-pink-400 font-extrabold">2.O</span>
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-pink-500/20 text-pink-300 border border-pink-500/40">
+              LIVE
+            </span>
+          </div>
         </div>
 
         {/* Right Side: Chat Mode & Three-Dots Menu */}

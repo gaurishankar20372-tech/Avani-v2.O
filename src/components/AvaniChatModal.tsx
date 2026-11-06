@@ -170,10 +170,10 @@ export function AvaniChatModal({
 
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-white text-base tracking-tight">
-                  Avani Chat
+                <h3 className="font-black text-white text-base sm:text-lg tracking-tight">
+                  Avani <span className="text-pink-400">2.O</span> Chat
                 </h3>
-                <span className="px-2 py-0.5 rounded-full bg-pink-500/15 text-pink-300 text-[10px] font-semibold border border-pink-500/30">
+                <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 text-[10px] font-bold border border-pink-500/40 font-mono">
                   चैट मोड
                 </span>
               </div>

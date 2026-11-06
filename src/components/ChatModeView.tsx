@@ -223,10 +223,10 @@ export const ChatModeView: React.FC<ChatModeViewProps> = ({
         {/* Center Title */}
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
-          <h1 className="text-sm font-bold tracking-tight bg-gradient-to-r from-white via-pink-200 to-pink-400 bg-clip-text text-transparent">
-            AVANI CHAT
+          <h1 className="text-base font-black tracking-tight text-white">
+            AVANI <span className="text-pink-400">2.O</span>
           </h1>
-          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-pink-500/10 text-pink-300 border border-pink-500/20">
+          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-pink-500/20 text-pink-300 border border-pink-500/40">
             Live AI
           </span>
         </div>
