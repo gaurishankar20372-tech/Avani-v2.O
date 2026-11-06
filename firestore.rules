@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.userId == userId
+        && data.createdAt is number
+        && (!('name' in data) || (data.name is string && data.name.size() <= 100))
+        && (!('language' in data) || (data.language is string && data.language.size() <= 20));
+    }
+
+    function isValidMemory(data, userId) {
+      return data.userId == userId
+        && data.id is string
+        && data.content is string
+        && data.content.size() > 0
+        && data.content.size() <= 10000
+        && data.createdAt is number
+        && (!('category' in data) || (data.category is string && data.category.size() <= 50))
+        && (!('key' in data) || (data.key is string && data.key.size() <= 100));
+    }
+
+    function isValidChatMessage(data, userId) {
+      return data.userId == userId
+        && data.id is string
+        && (data.sender == 'user' || data.sender == 'avani')
+        && data.text is string
+        && data.text.size() <= 50000
+        && data.timestamp is number;
+    }
+
+    function isValidSavedFile(data, userId) {
+      return data.userId == userId
+        && data.id is string
+        && data.title is string
+        && data.title.size() <= 200
+        && data.fileName is string
+        && data.fileName.size() <= 200
+        && data.content is string
+        && data.content.size() <= 1000000
+        && data.createdAt is number;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profile and subcollections
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidUserProfile(request.resource.data, userId);
+      allow delete: if isOwner(userId);
+
+      // Avani's Persistent Long-term Memories
+      match /memories/{memoryId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(memoryId) && isValidMemory(request.resource.data, userId);
+        allow update: if isOwner(userId) && isValidId(memoryId) && isValidMemory(request.resource.data, userId);
+        allow delete: if isOwner(userId) && isValidId(memoryId);
+      }
+
+      // Persistent Chat History
+      match /messages/{messageId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(messageId) && isValidChatMessage(request.resource.data, userId);
+        allow update: if isOwner(userId) && isValidId(messageId) && isValidChatMessage(request.resource.data, userId);
+        allow delete: if isOwner(userId) && isValidId(messageId);
+      }
+
+      // Saved Generated Code & Documents
+      match /savedFiles/{fileId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(fileId) && isValidSavedFile(request.resource.data, userId);
+        allow update: if isOwner(userId) && isValidId(fileId) && isValidSavedFile(request.resource.data, userId);
+        allow delete: if isOwner(userId) && isValidId(fileId);
+      }
+    }
+  }
+}

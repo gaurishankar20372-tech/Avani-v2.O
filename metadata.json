@@ -1,0 +1,6 @@
+{
+  "name": "Avani Assistant",
+  "description": "Real-time AI voice assistant featuring Avani with Gemini Live audio streaming, wake-word activation, Jetpack Compose futuristic UI, and Android device tool calling.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
