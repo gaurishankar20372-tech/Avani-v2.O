@@ -28,6 +28,8 @@ import {
   ShieldAlert,
   Power,
   Brain,
+  MoreVertical,
+  Award,
 } from "lucide-react";
 import {
   AssistantState,
@@ -50,6 +52,7 @@ import { DeviceSimulatorDrawer } from "./components/DeviceSimulatorDrawer";
 import { GeneratedFileModal } from "./components/GeneratedFileModal";
 import { AvaniChatModal } from "./components/AvaniChatModal";
 import { AvaniMemoryModal } from "./components/AvaniMemoryModal";
+import { CreatorModal } from "./components/CreatorModal";
 import { SASSY_REMARKS } from "./data/mockAndroidData";
 import { generateSmartFileForQuery } from "./utils/smartCodeGenerator";
 import {
@@ -122,10 +125,31 @@ export default function App() {
 
   // Modals & Panels
   const [isPermissionsOpen, setIsPermissionsOpen] = useState<boolean>(false);
+  const [isCreatorModalOpen, setIsCreatorModalOpen] = useState<boolean>(false);
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState<boolean>(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
   const [isSourceViewerOpen, setIsSourceViewerOpen] = useState<boolean>(false);
   const [isDeviceDrawerOpen, setIsDeviceDrawerOpen] = useState<boolean>(false);
   const [isPhoneFrameMode, setIsPhoneFrameMode] = useState<boolean>(false);
   const [currentToolEvent, setCurrentToolEvent] = useState<ToolCallEvent | null>(null);
+
+  // Close three-dots dropdown menu on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        statusMenuRef.current &&
+        !statusMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsStatusMenuOpen(false);
+      }
+    }
+    if (isStatusMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isStatusMenuOpen]);
 
   // Permissions State
   const [permissions, setPermissions] = useState<PermissionsState>({
@@ -661,7 +685,10 @@ export default function App() {
             setLatestSubtitle(data.replyText);
             speakAvaniFallback(data.replyText);
           } else {
-            const fallbackRemark = "हाँजी, मैं सुन रही हूँ! बताइए क्या काम करवाना है?";
+            const isCreatorQuery = /क्रिएटर|creator|किसने बनाया|who made|who created|developer|मालिक/i.test(queryText);
+            const fallbackRemark = isCreatorQuery
+              ? "मुझे विनय प्रताप (Vinay Pratap) ने बनाया है! वो मेरे क्रिएटर और मास्टरमाइंड हैं।"
+              : "हाँजी, मैं सुन रही हूँ! बताइए क्या काम करवाना है?";
             setLatestSubtitle(fallbackRemark);
             speakAvaniFallback(fallbackRemark);
           }
@@ -786,7 +813,11 @@ export default function App() {
       }
 
       if (!reply) {
-        reply = "हाँजी! मैं सुन रही हूँ। हुक्म कीजिए, क्या काम करवाना है?";
+        if (/क्रिएटर|creator|किसने बनाया|who made|who created|developer|मालिक/i.test(queryText)) {
+          reply = "मुझे विनय प्रताप (Vinay Pratap) ने बनाया है! वो मेरे क्रिएटर और मास्टरमाइंड हैं। उनकी बनाई अवनी 2.O दुनिया की सबसे स्मार्ट और सैसी AI असिस्टेंट है!";
+        } else {
+          reply = "हाँजी! मैं सुन रही हूँ। हुक्म कीजिए, क्या काम करवाना है?";
+        }
       }
 
       const avaniMsg: ChatMessage = {
@@ -837,39 +868,24 @@ export default function App() {
           isGeneratedFileModalOpen ? "hidden" : ""
         }`}
       >
-        {/* Left Side: Minimal Status & Brand Indicator */}
+        {/* Left Side: Brand Indicator - "Avani 2.O" */}
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-xs font-extrabold tracking-wider bg-gradient-to-r from-white via-pink-200 to-pink-400 bg-clip-text text-transparent font-sans">
-            AVANI
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
+          <span className="text-xs sm:text-sm font-black tracking-wider bg-gradient-to-r from-white via-pink-200 to-pink-400 bg-clip-text text-transparent font-sans">
+            Avani 2.O
           </span>
           <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
             • Live Assistant
           </span>
         </div>
 
-        {/* Right Side: Memory Button & Chat Mode Button */}
-        <div className="flex items-center gap-2">
-          {/* Memory Modal Trigger */}
-          <button
-            id="open-memory-modal-btn"
-            onClick={() => setIsMemoryModalOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-purple-500/50 text-slate-200 hover:text-white flex items-center gap-1.5 text-xs font-semibold shadow-md shadow-purple-950/20 transition-all active:scale-95 group"
-            title="अवनी की मेमोरी देखें (Avani's Memory)"
-            aria-label="Avani Memory"
-          >
-            <Brain className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
-            <span className="hidden sm:inline">मेमोरी</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/30 text-purple-200 font-mono">
-              {memories.length}
-            </span>
-          </button>
-
+        {/* Right Side: Chat Mode & Three-Dots Menu */}
+        <div className="flex items-center gap-2 relative" ref={statusMenuRef}>
           {/* Chat Mode Button */}
           <button
             id="open-chat-mode-btn"
             onClick={() => setIsChatModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-pink-500/50 text-slate-200 hover:text-white flex items-center gap-2 text-xs font-semibold shadow-md shadow-pink-950/20 transition-all active:scale-95 group"
+            className="px-3 sm:px-3.5 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-pink-500/50 text-slate-200 hover:text-white flex items-center gap-1.5 sm:gap-2 text-xs font-semibold shadow-md shadow-pink-950/20 transition-all active:scale-95 group"
             title="चैट मोड खोलें (Open Chat Mode)"
             aria-label="Open Chat Mode"
           >
@@ -879,6 +895,78 @@ export default function App() {
               <span className="w-1.5 h-1.5 rounded-full bg-pink-500" />
             )}
           </button>
+
+          {/* Three-Dots Menu Button */}
+          <button
+            id="status-menu-btn"
+            onClick={() => setIsStatusMenuOpen((prev) => !prev)}
+            className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all active:scale-95 ${
+              isStatusMenuOpen
+                ? "bg-slate-800 border-pink-500/60 text-pink-300 shadow-md shadow-pink-950/40"
+                : "bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 hover:border-pink-500/40 text-slate-300 hover:text-white shadow-md shadow-slate-950/40"
+            }`}
+            title="अधिक विकल्प (More Options)"
+            aria-label="More options"
+            aria-expanded={isStatusMenuOpen}
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+
+          {/* Dropdown Popover */}
+          {isStatusMenuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-56 py-1.5 rounded-2xl bg-slate-900/95 border border-pink-500/30 backdrop-blur-xl shadow-2xl shadow-black/80 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-3.5 py-2 border-b border-slate-800/80 flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
+                  Avani 2.O Menu
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              </div>
+
+              {/* 1. Avani Memory */}
+              <button
+                onClick={() => {
+                  setIsStatusMenuOpen(false);
+                  setIsMemoryModalOpen(true);
+                }}
+                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 flex items-center justify-between transition-colors group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Brain className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+                  <span>अवनी की मेमोरी (Memory)</span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-500/30 text-purple-200 font-mono font-bold">
+                  {memories.length}
+                </span>
+              </button>
+
+              {/* 2. Creator Vinay Pratap */}
+              <button
+                onClick={() => {
+                  setIsStatusMenuOpen(false);
+                  setIsCreatorModalOpen(true);
+                }}
+                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors group"
+              >
+                <Award className="w-4 h-4 text-pink-400 group-hover:scale-110 transition-transform" />
+                <div className="flex flex-col">
+                  <span className="text-white font-semibold">क्रिएटर: विनय प्रताप</span>
+                  <span className="text-[10px] text-pink-300/80">Mastermind: Vinay Pratap</span>
+                </div>
+              </button>
+
+              {/* 3. Device Permissions */}
+              <button
+                onClick={() => {
+                  setIsStatusMenuOpen(false);
+                  setIsPermissionsOpen(true);
+                }}
+                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors group"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span>डिवाइस परमिशन्स (Permissions)</span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -976,6 +1064,12 @@ export default function App() {
         onDeleteMemory={async (id) => {
           await deleteMemory(id);
         }}
+      />
+
+      {/* Creator Info Modal - Vinay Pratap */}
+      <CreatorModal
+        isOpen={isCreatorModalOpen}
+        onClose={() => setIsCreatorModalOpen(false)}
       />
 
       {/* Permissions Modal (Shown if microphone access is needed) */}
