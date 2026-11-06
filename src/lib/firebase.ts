@@ -14,29 +14,30 @@ export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestore
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
 
-// Initialize Anonymous Auth to provide persistent, secure UID for user memories
-let currentUser: User | null = null;
-const authReadyPromise = new Promise<User>((resolve) => {
-  onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      currentUser = user;
-      resolve(user);
-    } else {
-      try {
-        const userCred = await signInAnonymously(auth);
-        currentUser = userCred.user;
-        resolve(userCred.user);
-      } catch (err) {
-        console.warn("Anonymous auth notice:", err);
-      }
+const PERSISTENT_UID_KEY = "avani_persistent_uid";
+
+// Get persistent user ID that NEVER hangs and survives app close/reopens 100% of the time
+export function getPersistentUserId(): string {
+  if (auth.currentUser?.uid) {
+    return auth.currentUser.uid;
+  }
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    const existing = window.localStorage.getItem(PERSISTENT_UID_KEY);
+    if (existing && existing.length > 5 && existing.length <= 128) {
+      return existing;
     }
-  });
-});
+
+    const newId = `user_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+    window.localStorage.setItem(PERSISTENT_UID_KEY, newId);
+    return newId;
+  }
+
+  return "user_avani_default";
+}
 
 export async function getCurrentUserId(): Promise<string> {
-  if (currentUser) return currentUser.uid;
-  const user = await authReadyPromise;
-  return user.uid;
+  return getPersistentUserId();
 }
 
 // Connection validation

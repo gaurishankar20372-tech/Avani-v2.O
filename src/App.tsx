@@ -39,6 +39,7 @@ import {
   PermissionsState,
   ToolCallEvent,
   ChatMessage,
+  ChatSession,
 } from "./types";
 import { liveAudio } from "./utils/audio";
 import { wakeWordDetector } from "./utils/wakeWord";
@@ -64,6 +65,12 @@ import {
   saveChatMessage,
   autoExtractAndSaveMemories,
   formatMemoriesForContext,
+  getLocalCachedMemories,
+  getLocalCachedChat,
+  fetchChatSessions,
+  saveChatSession,
+  deleteChatSession,
+  getLocalCachedSessions,
 } from "./services/avaniMemoryService";
 import { testFirestoreConnection } from "./lib/firebase";
 
@@ -84,24 +91,59 @@ export default function App() {
   const [activeGeneratedFile, setActiveGeneratedFile] = useState<GeneratedFile | null>(null);
   const [isGeneratedFileModalOpen, setIsGeneratedFileModalOpen] = useState<boolean>(false);
 
-  // Chat Mode State
+  // Chat Mode State & Multi-Session History
   const [isChatModalOpen, setIsChatModalOpen] = useState<boolean>(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome-1",
-      sender: "avani",
-      text: "नमस्ते! मैं अवनी हूँ। क्या काम करवाना है? कोई कोड लिखवाना है, लीव लेटर PDF में चाहिए, या किसी को मैसेज भेजना है? बोलो, मैं सब कर दूंगी!",
-      timestamp: Date.now(),
-    },
-  ]);
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    const cached = getLocalCachedSessions();
+    if (cached && cached.length > 0) return cached;
+    const initialSession: ChatSession = {
+      id: "session_" + Date.now(),
+      title: "नई बातचीत (New Chat)",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [
+        {
+          id: "welcome-1",
+          sender: "avani",
+          text: "नमस्ते! मैं अवनी हूँ। क्या काम करवाना है? कोई कोड लिखवाना है, लीव लेटर PDF में चाहिए, या किसी को मैसेज भेजना है? बोलो, मैं सब कर दूंगी!",
+          timestamp: Date.now(),
+        },
+      ],
+      messageCount: 1,
+    };
+    return [initialSession];
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    const cached = getLocalCachedSessions();
+    return cached && cached.length > 0 ? cached[0].id : "session_" + Date.now();
+  });
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    const cachedSessions = getLocalCachedSessions();
+    if (cachedSessions && cachedSessions.length > 0 && cachedSessions[0].messages?.length > 0) {
+      return cachedSessions[0].messages;
+    }
+    const cached = getLocalCachedChat();
+    return cached && cached.length > 0
+      ? cached
+      : [
+          {
+            id: "welcome-1",
+            sender: "avani",
+            text: "नमस्ते! मैं अवनी हूँ। क्या काम करवाना है? कोई कोड लिखवाना है, लीव लेटर PDF में चाहिए, या किसी को मैसेज भेजना है? बोलो, मैं सब कर दूंगी!",
+            timestamp: Date.now(),
+          },
+        ];
+  });
   const [isChatThinking, setIsChatThinking] = useState<boolean>(false);
   const [isVoiceMutedInChat, setIsVoiceMutedInChat] = useState<boolean>(false);
 
   // Firebase Persistent Long-Term Memory State
-  const [memories, setMemories] = useState<AvaniMemory[]>([]);
+  const [memories, setMemories] = useState<AvaniMemory[]>(() => getLocalCachedMemories());
   const [isMemoryModalOpen, setIsMemoryModalOpen] = useState<boolean>(false);
 
-  // Load persistent memories and chat history from Firebase on mount
+  // Load persistent memories and chat history & sessions from Firebase on mount
   useEffect(() => {
     // 1. Test connection to Firestore
     testFirestoreConnection().catch(() => {});
@@ -111,10 +153,21 @@ export default function App() {
       setMemories(mems);
     });
 
-    // 3. Load previous chat history from Firebase
-    fetchChatHistory().then((history) => {
-      if (history && history.length > 0) {
-        setChatMessages(history);
+    // 3. Load previous chat sessions from Firebase
+    fetchChatSessions().then((fetchedSessions) => {
+      if (fetchedSessions && fetchedSessions.length > 0) {
+        setSessions(fetchedSessions);
+        const current = fetchedSessions.find((s) => s.id === activeSessionId) || fetchedSessions[0];
+        setActiveSessionId(current.id);
+        if (current.messages && current.messages.length > 0) {
+          setChatMessages(current.messages);
+        }
+      } else {
+        fetchChatHistory().then((history) => {
+          if (history && history.length > 0) {
+            setChatMessages(history);
+          }
+        });
       }
     });
 
@@ -606,7 +659,13 @@ export default function App() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 35000);
 
-        autoExtractAndSaveMemories(queryText).catch(() => {});
+        autoExtractAndSaveMemories(queryText)
+          .then((newMem) => {
+            if (newMem) {
+              setMemories((prev) => [newMem, ...prev.filter((m) => m.id !== newMem.id)]);
+            }
+          })
+          .catch(() => {});
 
         const res = await fetch("/api/avani/query", {
           method: "POST",
@@ -749,7 +808,13 @@ export default function App() {
     };
     setChatMessages((prev) => [...prev, userMsg]);
     saveChatMessage(userMsg).catch(() => {});
-    autoExtractAndSaveMemories(queryText).catch(() => {});
+    autoExtractAndSaveMemories(queryText)
+      .then((newMem) => {
+        if (newMem) {
+          setMemories((prev) => [newMem, ...prev.filter((m) => m.id !== newMem.id)]);
+        }
+      })
+      .catch(() => {});
     setIsChatThinking(true);
 
     try {
@@ -833,6 +898,30 @@ export default function App() {
       saveChatMessage(avaniMsg).catch(() => {});
       setLatestSubtitle(reply);
 
+      // Persist to active session
+      setSessions((prevSessions) => {
+        const existing = prevSessions.find((s) => s.id === activeSessionId);
+        const title =
+          existing && existing.title !== "नई बातचीत (New Chat)"
+            ? existing.title
+            : queryText.slice(0, 32);
+
+        const currentMsgs = existing?.messages || [];
+        const updatedMsgs = [...currentMsgs, userMsg, avaniMsg];
+
+        const updatedSession: ChatSession = {
+          id: activeSessionId,
+          title,
+          createdAt: existing?.createdAt || Date.now(),
+          updatedAt: Date.now(),
+          messages: updatedMsgs,
+          messageCount: updatedMsgs.length,
+        };
+
+        saveChatSession(updatedSession).catch(() => {});
+        return [updatedSession, ...prevSessions.filter((s) => s.id !== activeSessionId)];
+      });
+
       // Speak if voice in chat is not muted
       if (!isVoiceMutedInChat) {
         speakAvaniFallback(reply);
@@ -849,6 +938,51 @@ export default function App() {
     } finally {
       setIsChatThinking(false);
     }
+  };
+
+  // Session switching and creation handlers
+  const handleSelectSession = (session: ChatSession) => {
+    setActiveSessionId(session.id);
+    setChatMessages(session.messages || []);
+  };
+
+  const handleNewChat = () => {
+    const newSessionId = "session_" + Date.now();
+    const welcomeMsg: ChatMessage = {
+      id: "welcome-" + Date.now(),
+      sender: "avani",
+      text: "नमस्ते! नई बातचीत शुरू हो गई है। बताइए आज क्या काम करना है?",
+      timestamp: Date.now(),
+    };
+    const newSession: ChatSession = {
+      id: newSessionId,
+      title: "नई बातचीत (New Chat)",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [welcomeMsg],
+      messageCount: 1,
+    };
+
+    setActiveSessionId(newSessionId);
+    setChatMessages([welcomeMsg]);
+    setSessions((prev) => [newSession, ...prev.filter((s) => s.id !== newSessionId)]);
+    saveChatSession(newSession).catch(() => {});
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    await deleteChatSession(sessionId);
+    setSessions((prev) => {
+      const remaining = prev.filter((s) => s.id !== sessionId);
+      if (sessionId === activeSessionId) {
+        if (remaining.length > 0) {
+          setActiveSessionId(remaining[0].id);
+          setChatMessages(remaining[0].messages);
+        } else {
+          setTimeout(() => handleNewChat(), 50);
+        }
+      }
+      return remaining;
+    });
   };
 
   return (
@@ -901,30 +1035,30 @@ export default function App() {
             )}
           </button>
 
-          {/* Three-Dots Menu Button */}
+          {/* Three-Dots Menu Button - Pitch Black Dark */}
           <button
             id="status-menu-btn"
             onClick={() => setIsStatusMenuOpen((prev) => !prev)}
-            className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all active:scale-95 ${
+            className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all active:scale-95 shadow-md ${
               isStatusMenuOpen
-                ? "bg-slate-800 border-pink-500/60 text-pink-300 shadow-md shadow-pink-950/40"
-                : "bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 hover:border-pink-500/40 text-slate-300 hover:text-white shadow-md shadow-slate-950/40"
+                ? "bg-black border-pink-500 text-pink-300 shadow-black ring-1 ring-pink-500/40"
+                : "bg-black hover:bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-white shadow-black"
             }`}
             title="अधिक विकल्प (More Options)"
             aria-label="More options"
             aria-expanded={isStatusMenuOpen}
           >
-            <MoreVertical className="w-4 h-4" />
+            <MoreVertical className="w-4 h-4 text-white" />
           </button>
 
-          {/* Dropdown Popover */}
+          {/* Dropdown Popover - Pitch Black Dark */}
           {isStatusMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 py-1.5 rounded-2xl bg-slate-900/95 border border-pink-500/30 backdrop-blur-xl shadow-2xl shadow-black/80 z-50 animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-3.5 py-2 border-b border-slate-800/80 flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
+            <div className="absolute right-0 top-full mt-2 w-60 py-2 rounded-2xl bg-black border border-neutral-800 shadow-[0_20px_60px_rgba(0,0,0,0.95)] ring-1 ring-white/10 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-3.5 py-2 border-b border-neutral-900 flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-bold">
                   Avani 2.O Menu
                 </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/80" />
               </div>
 
               {/* 1. Avani Memory */}
@@ -933,13 +1067,13 @@ export default function App() {
                   setIsStatusMenuOpen(false);
                   setIsMemoryModalOpen(true);
                 }}
-                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 flex items-center justify-between transition-colors group"
+                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-neutral-200 hover:text-white hover:bg-neutral-900/90 flex items-center justify-between transition-colors group"
               >
                 <div className="flex items-center gap-2.5">
                   <Brain className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
                   <span>अवनी की मेमोरी (Memory)</span>
                 </div>
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-500/30 text-purple-200 font-mono font-bold">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-neutral-900 text-purple-300 border border-purple-500/30 font-mono font-bold">
                   {memories.length}
                 </span>
               </button>
@@ -950,7 +1084,7 @@ export default function App() {
                   setIsStatusMenuOpen(false);
                   setIsCreatorModalOpen(true);
                 }}
-                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors group"
+                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-neutral-200 hover:text-white hover:bg-neutral-900/90 flex items-center gap-2.5 transition-colors group"
               >
                 <Award className="w-4 h-4 text-pink-400 group-hover:scale-110 transition-transform" />
                 <div className="flex flex-col">
@@ -965,7 +1099,7 @@ export default function App() {
                   setIsStatusMenuOpen(false);
                   setIsPermissionsOpen(true);
                 }}
-                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 flex items-center gap-2.5 transition-colors group"
+                className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-neutral-200 hover:text-white hover:bg-neutral-900/90 flex items-center gap-2.5 transition-colors group"
               >
                 <ShieldCheck className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
                 <span>डिवाइस परमिशन्स (Permissions)</span>
@@ -1056,6 +1190,13 @@ export default function App() {
         onToggleVoiceMute={() => setIsVoiceMutedInChat(!isVoiceMutedInChat)}
         onOpenMemory={() => setIsMemoryModalOpen(true)}
         memoriesCount={memories.length}
+        onOpenCreator={() => setIsCreatorModalOpen(true)}
+        onOpenPermissions={() => setIsPermissionsOpen(true)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={handleSelectSession}
+        onNewChat={handleNewChat}
+        onDeleteSession={handleDeleteSession}
       />
 
       {/* Avani Long-Term Memory Modal */}
@@ -1064,10 +1205,12 @@ export default function App() {
         onClose={() => setIsMemoryModalOpen(false)}
         memories={memories}
         onAddMemory={async (content, category) => {
-          await saveMemory(content, category);
+          const newMem = await saveMemory(content, category);
+          setMemories((prev) => [newMem, ...prev.filter((m) => m.id !== newMem.id)]);
         }}
         onDeleteMemory={async (id) => {
           await deleteMemory(id);
+          setMemories((prev) => prev.filter((m) => m.id !== id));
         }}
       />
 

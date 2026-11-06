@@ -19,9 +19,15 @@ import {
   ArrowLeft,
   Check,
   Brain,
+  MoreVertical,
+  Award,
+  ShieldCheck,
+  Loader2,
+  History,
 } from "lucide-react";
-import { ChatMessage, GeneratedFile } from "../types";
+import { ChatMessage, GeneratedFile, ChatSession } from "../types";
 import { downloadPdf, downloadZip, sendViaWhatsApp } from "../utils/fileExporter";
+import { ChatHistoryModal } from "./ChatHistoryModal";
 
 interface AvaniChatModalProps {
   isOpen: boolean;
@@ -36,6 +42,13 @@ interface AvaniChatModalProps {
   onToggleVoiceMute: () => void;
   onOpenMemory?: () => void;
   memoriesCount?: number;
+  onOpenCreator?: () => void;
+  onOpenPermissions?: () => void;
+  sessions?: ChatSession[];
+  activeSessionId?: string;
+  onSelectSession?: (session: ChatSession) => void;
+  onNewChat?: () => void;
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 export function AvaniChatModal({
@@ -51,12 +64,38 @@ export function AvaniChatModal({
   onToggleVoiceMute,
   onOpenMemory,
   memoriesCount = 0,
+  onOpenCreator,
+  onOpenPermissions,
+  sessions = [],
+  activeSessionId = "",
+  onSelectSession,
+  onNewChat,
+  onDeleteSession,
 }: AvaniChatModalProps) {
   const [inputText, setInputText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [isChatMenuOpen, setIsChatMenuOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [chatLogNotice, setChatLogNotice] = useState<string | null>(null);
+  const chatMenuRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
+
+  // Close three dots dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target as Node)) {
+        setIsChatMenuOpen(false);
+      }
+    }
+    if (isChatMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isChatMenuOpen]);
 
   // Auto-scroll to bottom on new message
   useEffect(() => {
@@ -151,95 +190,142 @@ export function AvaniChatModal({
           style={{ backgroundColor: "#0b1120" }}
           className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0 shadow-md"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
               title="वापस वॉइस मोड पर जाएं"
               aria-label="Back to Voice Orb"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
 
-            <div className="relative">
+            {/* History Chats Button (Right next to Left Arrow) */}
+            <button
+              id="open-history-chats-btn"
+              onClick={() => setIsHistoryOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-200 hover:text-white border border-neutral-800 hover:border-pink-500/40 transition-all flex items-center gap-1.5 text-xs font-semibold shadow-sm active:scale-95 group shrink-0"
+              title="चैट हिस्ट्री देखें व नया चैट खोलें (Chat History & New Chat)"
+            >
+              <History className="w-3.5 h-3.5 text-pink-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline">हिस्ट्री</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-neutral-800 text-pink-300 font-mono border border-neutral-700 font-bold">
+                {sessions.length}
+              </span>
+            </button>
+
+            <div className="relative shrink-0">
               <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-600 via-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-pink-500/25">
                 <Sparkles className="w-5 h-5" />
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900 animate-pulse" />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-black text-white text-base sm:text-lg tracking-tight">
+                <h3 className="font-black text-white text-base sm:text-lg tracking-tight truncate">
                   Avani <span className="text-pink-400">2.O</span> Chat
                 </h3>
-                <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 text-[10px] font-bold border border-pink-500/40 font-mono">
+                <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 text-[10px] font-bold border border-pink-500/40 font-mono shrink-0">
                   चैट मोड
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400 truncate">
                 {isThinking ? "अवनी लिख रही है..." : "ऑनलाइन • वॉइस & टेक्स्ट सक्षम"}
               </p>
             </div>
           </div>
 
-          {/* Action buttons in header */}
-          <div className="flex items-center gap-1.5">
-            {/* Memory Button */}
-            {onOpenMemory && (
-              <button
-                onClick={onOpenMemory}
-                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all bg-purple-950/60 text-purple-300 border border-purple-500/40 hover:bg-purple-900/60 shadow-sm"
-                title="अवनी की मेमोरी देखें (Avani's Memory)"
-              >
-                <Brain className="w-3.5 h-3.5 text-purple-400" />
-                <span className="hidden sm:inline">मेमोरी</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/30 text-purple-200 font-mono">
-                  {memoriesCount}
-                </span>
-              </button>
-            )}
-
-            {/* Voice Mute / Speak Toggle */}
+          {/* Right Corner: Three-Dots Menu - Pitch Black Dark */}
+          <div className="relative" ref={chatMenuRef}>
             <button
-              onClick={onToggleVoiceMute}
-              className={`p-2 rounded-xl text-xs font-medium flex items-center gap-1 transition-all border ${
-                isVoiceMuted
-                  ? "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200"
-                  : "bg-pink-950/60 text-pink-300 border-pink-500/40 hover:bg-pink-900/60"
+              id="chat-status-menu-btn"
+              onClick={() => setIsChatMenuOpen((prev) => !prev)}
+              className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all active:scale-95 shadow-md ${
+                isChatMenuOpen
+                  ? "bg-black border-pink-500 text-pink-300 shadow-black ring-1 ring-pink-500/40"
+                  : "bg-black hover:bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-white shadow-black"
               }`}
-              title={
-                isVoiceMuted
-                  ? "आवाज़ बंद है (टैप करें आवाज़ चालू करने के लिए)"
-                  : "अवनी बोलकर भी जवाब देगी (टैप करें म्यूट करने के लिए)"
-              }
+              title="अधिक विकल्प (More Options)"
+              aria-label="More options"
+              aria-expanded={isChatMenuOpen}
             >
-              {isVoiceMuted ? (
-                <VolumeX className="w-4 h-4 text-slate-400" />
-              ) : (
-                <Volume2 className="w-4 h-4 text-pink-400" />
-              )}
+              <MoreVertical className="w-4 h-4 text-white" />
             </button>
 
-            {/* Clear Chat */}
-            <button
-              onClick={onClearChat}
-              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
-              title="चैट साफ़ करें (Clear Chat)"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {/* Dropdown Popover - Pitch Black Dark */}
+            {isChatMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 py-2 rounded-2xl bg-black border border-neutral-800 shadow-[0_20px_60px_rgba(0,0,0,0.95)] ring-1 ring-white/10 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-3.5 py-2 border-b border-neutral-900 flex items-center justify-between">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-bold">
+                    Avani 2.O Menu
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/80" />
+                </div>
 
-            {/* Close */}
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-slate-800"
-              title="बंद करें"
-            >
-              <X className="w-4 h-4" />
-            </button>
+                {/* 1. Avani Memory */}
+                <button
+                  onClick={() => {
+                    setIsChatMenuOpen(false);
+                    onOpenMemory?.();
+                  }}
+                  className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-neutral-200 hover:text-white hover:bg-neutral-900/90 flex items-center justify-between transition-colors group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Brain className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+                    <span>अवनी की मेमोरी (Memory)</span>
+                  </div>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-neutral-900 text-purple-300 border border-purple-500/30 font-mono font-bold">
+                    {memoriesCount}
+                  </span>
+                </button>
+
+                {/* 2. Creator Vinay Pratap */}
+                <button
+                  onClick={() => {
+                    setIsChatMenuOpen(false);
+                    onOpenCreator?.();
+                  }}
+                  className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-neutral-200 hover:text-white hover:bg-neutral-900/90 flex items-center gap-2.5 transition-colors group"
+                >
+                  <Award className="w-4 h-4 text-pink-400 group-hover:scale-110 transition-transform" />
+                  <div className="flex flex-col">
+                    <span className="text-white font-semibold">क्रिएटर: विनय प्रताप</span>
+                    <span className="text-[10px] text-pink-300/80">Mastermind: Vinay Pratap</span>
+                  </div>
+                </button>
+
+                {/* 3. Device Permissions */}
+                <button
+                  onClick={() => {
+                    setIsChatMenuOpen(false);
+                    onOpenPermissions?.();
+                  }}
+                  className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-neutral-200 hover:text-white hover:bg-neutral-900/90 flex items-center gap-2.5 transition-colors group"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span>डिवाइस परमिशन्स (Permissions)</span>
+                </button>
+              </div>
+            )}
           </div>
         </header>
+
+        {/* Notice Banner if Chat Logs were deleted */}
+        {chatLogNotice && (
+          <div className="px-4 py-2 bg-emerald-950/80 border-b border-emerald-500/40 text-emerald-200 text-xs font-medium flex items-center justify-between animate-in slide-in-from-top duration-200 shrink-0">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400" />
+              <span>{chatLogNotice}</span>
+            </div>
+            <button
+              onClick={() => setChatLogNotice(null)}
+              className="text-emerald-400 hover:text-white transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Message Feed */}
         <div
@@ -470,6 +556,25 @@ export function AvaniChatModal({
           </button>
         </form>
       </div>
+
+      {/* History Chats Modal with New Chat Option */}
+      <ChatHistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={(sess) => {
+          onSelectSession?.(sess);
+          setIsHistoryOpen(false);
+        }}
+        onNewChat={() => {
+          onNewChat?.();
+          setIsHistoryOpen(false);
+        }}
+        onDeleteSession={(sessId) => {
+          onDeleteSession?.(sessId);
+        }}
+      />
     </div>
   );
 }

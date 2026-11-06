@@ -90,3 +90,12 @@ export interface ChatMessage {
   audioBase64?: string;
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessage[];
+  messageCount?: number;
+}
+

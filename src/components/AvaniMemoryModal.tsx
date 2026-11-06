@@ -20,7 +20,23 @@ export const AvaniMemoryModal: React.FC<AvaniMemoryModalProps> = ({
   const [newContent, setNewContent] = useState("");
   const [category, setCategory] = useState<"fact" | "preference" | "task" | "general">("fact");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Listen for Escape key to close modal
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -28,10 +44,15 @@ export const AvaniMemoryModal: React.FC<AvaniMemoryModalProps> = ({
     e.preventDefault();
     if (!newContent.trim() || isSubmitting) return;
 
+    const contentToSave = newContent.trim();
     try {
       setIsSubmitting(true);
-      await onAddMemory(newContent.trim(), category);
+      await onAddMemory(contentToSave, category);
       setNewContent("");
+      setSaveSuccess(`सुरक्षित कर दिया गया! अवनी इसे हमेशा याद रखेगी ✨`);
+      setTimeout(() => setSaveSuccess(null), 3500);
+    } catch (err: any) {
+      console.error("Save memory notice:", err);
     } finally {
       setIsSubmitting(false);
     }
@@ -56,6 +77,11 @@ export const AvaniMemoryModal: React.FC<AvaniMemoryModalProps> = ({
   return (
     <div
       id="avani-memory-modal-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
     >
       <div
@@ -134,12 +160,28 @@ export const AvaniMemoryModal: React.FC<AvaniMemoryModalProps> = ({
               <button
                 type="submit"
                 disabled={!newContent.trim() || isSubmitting}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md shadow-purple-600/30"
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md shadow-purple-600/30 active:scale-95 shrink-0"
               >
-                <Plus className="w-4 h-4" />
-                <span>याद रखें</span>
+                {isSubmitting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>सेव हो रहा है...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    <span>याद रखें</span>
+                  </>
+                )}
               </button>
             </div>
+
+            {saveSuccess && (
+              <div className="px-3 py-2 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{saveSuccess}</span>
+              </div>
+            )}
           </form>
 
           {/* Stored Memories List */}

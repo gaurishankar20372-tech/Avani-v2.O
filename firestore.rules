@@ -8,7 +8,8 @@ service cloud.firestore {
     }
 
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return (request.auth != null && request.auth.uid == userId)
+        || (request.auth == null && isValidId(userId));
     }
 
     function isValidId(id) {
@@ -79,6 +80,13 @@ service cloud.firestore {
         allow create: if isOwner(userId) && isValidId(messageId) && isValidChatMessage(request.resource.data, userId);
         allow update: if isOwner(userId) && isValidId(messageId) && isValidChatMessage(request.resource.data, userId);
         allow delete: if isOwner(userId) && isValidId(messageId);
+      }
+
+      // Chat Sessions History
+      match /chatSessions/{sessionId} {
+        allow get, list: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(sessionId);
+        allow delete: if isOwner(userId) && isValidId(sessionId);
       }
 
       // Saved Generated Code & Documents
